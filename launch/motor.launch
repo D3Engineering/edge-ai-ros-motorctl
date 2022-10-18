@@ -1,0 +1,3 @@
+<launch>
+    <node pkg="d3_motorctl" type="c2000_teknic.py" name="d3_motorctl" ns="motorctl" output="screen"/>
+</launch>
