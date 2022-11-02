@@ -163,7 +163,7 @@ include_directories(
 #   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 # )
 catkin_install_python(PROGRAMS
-	scripts/subscriber.py
+	scripts/c2000_teknic.py
 	DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
