@@ -27,6 +27,8 @@ def callback(data):
     # Should add to <= 4096
     linear_coeff = 192
     angular_coeff = 144
+    #linear_coeff = 100
+    #angular_coeff = 0
     #linear_coeff = 512
     #angular_coeff = 256
     left_linear_offset = 0
@@ -64,7 +66,7 @@ def callback(data):
         if not estop:
             update_motor_speed(lbus, -base_left_speed)
             update_motor_speed(rbus, base_right_speed)
-            rospy.loginfo("Left Motor: " + str(base_left_speed) + ", Right Motor: " + str(base_right_speed))
+            rospy.loginfo("Left Motor: " + str(-base_left_speed) + ", Right Motor: " + str(base_right_speed))
             last_left_speed = base_left_speed
             last_right_speed = base_right_speed
         else:
