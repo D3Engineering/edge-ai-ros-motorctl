@@ -9,6 +9,7 @@ import numpy as np
 import rospy
 from geometry_msgs.msg import Quaternion, Transform, TransformStamped, PoseWithCovariance, TwistWithCovariance, Pose, Twist, Point, Vector3
 from nav_msgs.msg import Odometry
+from d3_motorctl.motor_ctl import bytes_to_velocity
 import tf
 
 # Define Constants
@@ -67,31 +68,18 @@ def compute_wheel_linear_velocity(can_msg, wheel_name):
     global gear_ratio, wheel_radius
     speed_bytes = can_msg.data[4:6]
     speed_raw_int = int.from_bytes(speed_bytes, 'big')
-    if (speed_raw_int > 30000):
+    if ((speed_raw_int >> 15) == 1):
         speed_raw_int -= 65535
-    print(wheel_name + " Raw Speed: " + str(speed_raw_int))
-    speed_hz = speed_raw_int / 10 / 4
-    print(wheel_name + " Hz: " + str(speed_hz))
-    speed_rad_per_sec = (speed_hz * math.pi * 2) / gear_ratio
-    print(wheel_name + " Rad per Sec: " + str(speed_rad_per_sec))
-    wheel_linear_velocity = speed_rad_per_sec * wheel_radius
-    # Fudge factor! The wheels are reporting ~1.6 meters of travel across ~2 meters of actual distance
-    wheel_linear_velocity = wheel_linear_velocity * wheel_speed_correction
+    wheel_linear_velocity = bytes_to_velocity(speed_raw_int)
     return wheel_linear_velocity
 
 
 def compute_x_y_theta(left_linear_velocity, right_linear_velocity, time_elapsed):
     theta = ((left_linear_velocity-right_linear_velocity)/wheel_base)*time_elapsed
-    #if abs(theta) < 0.001:
-    if abs(theta) < 0.005:
-        theta = 0.0
-        x = right_linear_velocity * time_elapsed
-        y = 0.0
-    else:
-        x = (((right_linear_velocity / 2) * math.cos(theta)) +
-                   ((left_linear_velocity / 2) * math.cos(theta))) * time_elapsed
-        y = (((right_linear_velocity / 2) * math.sin(theta)) +
-                   ((left_linear_velocity / 2) * math.sin(theta))) * time_elapsed
+    x = (((right_linear_velocity / 2) * math.cos(theta)) +
+         ((left_linear_velocity / 2) * math.cos(theta))) * time_elapsed
+    y = (((right_linear_velocity / 2) * math.sin(theta)) +
+         ((left_linear_velocity / 2) * math.sin(theta))) * time_elapsed
     return x, y, theta
 
 

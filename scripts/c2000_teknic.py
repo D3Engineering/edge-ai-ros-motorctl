@@ -4,6 +4,8 @@ from geometry_msgs.msg import Twist
 import can
 import os
 import time
+import math
+from d3_motorctl.motor_ctl import velocity_to_bytes
 
 global estop
 
@@ -39,10 +41,9 @@ def callback(data):
     lbus = can.Bus(channel='can0', interface='socketcan')
     rbus = can.Bus(channel='can2', interface='socketcan')
     rospy.loginfo(rospy.get_caller_id() + "\n%s", data)
-    
-    base_left_speed = int((linear_coeff + left_linear_offset) * data.linear.x) - int(angular_coeff * data.angular.z)
-    base_right_speed = int((linear_coeff + right_linear_offset) * data.linear.x) + int(angular_coeff * data.angular.z)
-    
+
+    (base_left_speed, base_right_speed) = velocity_to_bytes(0.5*data.linear.x, math.pi*data.angular.z)
+
     if data.linear.y == 1:
         estop = True
         rospy.loginfo("EStop Triggered")
