@@ -99,6 +99,8 @@ def process_can_messages(lmsg, rmsg):
     print("Local [X: " + str(dx) + ", Y: " + str(dy) + ", Theta: " + str(dt) + "]")
     if dx != float("Inf") and not math.isnan(dx) and dy != float("Inf") and not math.isnan(dy):
         H = np.linalg.norm((dx,dy))
+        if dx < 0 and dy < 0:
+            H = -H
         total_x += H * math.cos(total_theta)
         total_y += H * math.sin(total_theta)
     total_theta += dt
@@ -116,13 +118,13 @@ def process_can_messages(lmsg, rmsg):
         "base_link",
         "odom"
     )
-    # odom = Odometry()
-    # odom.header.stamp = current_time
-    # odom.header.frame_id = "odom"
-    # odom.pose.pose = Pose(Point(total_x, total_y, 0.), Quaternion(*odom_quat))
-    # odom.child_frame_id = "base_link"
-    # odom.twist.twist = Twist(Vector3(dx, dy, 0), Vector3(0, 0, dt))
-    # odom_pub.publish(odom)
+    odom = Odometry()
+    odom.header.stamp = current_time
+    odom.header.frame_id = "odom"
+    odom.pose.pose = Pose(Point(total_x, total_y, 0.), Quaternion(*odom_quat))
+    odom.child_frame_id = "base_link"
+    odom.twist.twist = Twist(Vector3(dx, dy, 0), Vector3(0, 0, dt))
+    odom_pub.publish(odom)
     last_proc_time = current_time
 
 

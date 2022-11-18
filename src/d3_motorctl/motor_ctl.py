@@ -19,11 +19,8 @@ WHEEL_RADIUS = WHEEL_DIAMETER/2
 WHEEL_BASE = 0.37 # meters # HACK
 
 def bytes_to_velocity(speed_raw):
-    print(wheel_name + " Raw Speed: " + str(speed_raw_int))
-    speed_hz = speed_raw_int / MOTOR_BYTES_PER_HZ / MOTOR_POLES
-    print(wheel_name + " Hz: " + str(speed_hz))
+    speed_hz = speed_raw / MOTOR_BYTES_PER_HZ / MOTOR_POLES
     speed_rad_per_sec = (speed_hz * math.pi * 2) / GEAR_RATIO
-    print(wheel_name + " Rad per Sec: " + str(speed_rad_per_sec))
     wheel_linear_velocity = speed_rad_per_sec * WHEEL_RADIUS
     return wheel_linear_velocity
 
