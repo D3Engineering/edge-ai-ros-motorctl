@@ -121,7 +121,7 @@ def process_can_messages(lmsg, rmsg):
     odom = Odometry()
     odom.header.stamp = current_time
     odom.header.frame_id = "odom"
-    odom.pose.pose = Pose(Point(total_x, total_y, 0.), Quaternion(*odom_quat))
+    odom.pose.pose = Pose(Point(total_x, total_y, 0.), Quaternion(*odom_tf_quat))
     odom.child_frame_id = "base_link"
     odom.twist.twist = Twist(Vector3(dx, dy, 0), Vector3(0, 0, dt))
     odom_pub.publish(odom)
