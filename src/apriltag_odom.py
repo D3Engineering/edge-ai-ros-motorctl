@@ -30,8 +30,26 @@ class apriltag_odom:
         now = rospy.Time.now()
         tfl.waitForTransform(t1, t2, now, rospy.Duration(4.0))
         self.tag_height = tfl.lookupTransform(t1, t2, now)[0][2]
-        print(self.tag_height)
         self.num_frames = num_frames
+
+    def averageQuaternions(self, Q):
+        # Number of quaternions to average
+        M = Q.shape[0]
+        A = np.zeros((4, 4))
+
+        for i in range(0, M):
+            q = Q[i, :]
+            # multiply q with its transposed version q' and add A
+            A = np.outer(q, q) + A
+
+        # scale
+        A = (1.0 / M) * A
+        # compute eigenvalues and -vectors
+        eigenValues, eigenVectors = np.linalg.eig(A)
+        # Sort by largest eigenvalue
+        eigenVectors = eigenVectors[:, eigenValues.argsort()[::-1]]
+        # return the real part of the largest eigenvector (has only real part)
+        return np.real(eigenVectors[:, 0].flatten())
 
     def get_instant_pose(self, image: Image) -> Union[Pose, None]:
         try:
@@ -176,34 +194,30 @@ class apriltag_odom:
         if len(poses) == 0:
             print("All poses were considered bad, trying pose estimation again...")
             return self.get_pose()
-        x_sum, y_sum, z_sum, qx_sum, qy_sum, qz_sum, qw_sum = [0] * 7
+        x_sum, y_sum, z_sum = [0] * 3
+        conversion_quaternions = []
         for pose in poses:
             x_sum += pose.position.x
             y_sum += pose.position.y
             z_sum += pose.position.z
-            qx_sum += pose.orientation.x
-            qy_sum += pose.orientation.y
-            qz_sum += pose.orientation.z
-            qw_sum += pose.orientation.w
+            conversion_quaternions.append((pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z))
         plen = len(poses)
         x_pose = float(x_sum / plen)
         y_pose = float(y_sum / plen)
         z_pose = self.tag_height
-        qx_pose = float(qx_sum / plen)
-        qy_pose = float(qy_sum / plen)
-        qz_pose = float(qz_sum / plen)
-        qw_pose = float(qw_sum / plen)
+        avg_point = Point(x_pose, y_pose, z_pose)
+        avg_quat_wxyz = self.averageQuaternions(np.array(conversion_quaternions, dtype=float))
+        avg_quat_xyzw = Quaternion(avg_quat_wxyz[1], avg_quat_wxyz[2], avg_quat_wxyz[3], avg_quat_wxyz[0])
         print("X Final: " + str(x_pose))
         print("Y Final: " + str(y_pose))
-        robot_pose = Pose(Point(x_pose, y_pose, z_pose),
-                          Quaternion(qx_pose, qy_pose, qz_pose, qw_pose))
-        self.tfbr.sendTransform((x_sum / plen, y_sum / plen, self.tag_height),
+        camera_pose = Pose(avg_point, avg_quat_xyzw)
+        self.tfbr.sendTransform((x_pose, y_pose, z_pose),
                                 # self.tfbr.sendTransform((res_tvecs[0], res_tvecs[1], 0),
-                                (qx_sum / plen, qy_sum / plen, qz_sum / plen, qw_sum / plen),
+                                (avg_quat_xyzw.x, avg_quat_xyzw.y, avg_quat_xyzw.z, avg_quat_xyzw.w),
                                 rospy.Time.now(),
                                 "imx390_rear_optical",
                                 "apriltag21")
-        return robot_pose
+        return camera_pose
 
 
 def main(args):
