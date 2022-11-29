@@ -10,6 +10,7 @@ import rospy
 from geometry_msgs.msg import Quaternion, Transform, TransformStamped, PoseWithCovariance, TwistWithCovariance, Pose, Twist, Point, Vector3
 from nav_msgs.msg import Odometry
 from d3_motorctl.motor_ctl import bytes_to_velocity
+from d3_motorctl.srv import OdomAprilTag,OdomAprilTagResponse
 import tf
 
 # Define Constants
@@ -38,6 +39,7 @@ total_theta = 0.0
 def setup_listeners():
     global last_proc_time
     rospy.init_node('d3_odometry', anonymous=True)
+    s = rospy.Service('odom_april_tag', OdomAprilTag, apriltag_odometry_callback)
     last_proc_time = rospy.Time.now()
     left_listeners: List[MessageRecipient] = [
         left_motor_callback
@@ -50,6 +52,11 @@ def setup_listeners():
     right_notifier = can.Notifier(right_can_bus, right_listeners, loop=loop)
     return loop
 
+def apriltag_odometry_callback(req):
+    print("Apriltag Odometry callback initiated")
+    result = Pose(Point(total_x, total_y, 0.), Quaternion(*tf.transformations.quaternion_from_euler(0, 0, total_theta)))
+    print(result)
+    return result
 
 def left_motor_callback(lmsg: can.Message):
     global can_global_lmsg
