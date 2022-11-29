@@ -93,8 +93,10 @@ def listener():
     estop = False
     os.system("ip link set can0 type can bitrate 500000")
     os.system("ip link set can0 up")
+    os.system("ifconfig can0 txqueuelen 1000")
     os.system("ip link set can2 type can bitrate 500000")
     os.system("ip link set can2 up")
+    os.system("ifconfig can2 txqueuelen 1000")
     rospy.init_node('motor_listener', anonymous=True)
     rospy.Subscriber("/cmd_vel", Twist, callback)
     rospy.spin()
