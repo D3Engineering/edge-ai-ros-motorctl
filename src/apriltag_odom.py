@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from json import JSONDecodeError
 from typing import Union
 
 import rospy
@@ -14,6 +15,7 @@ import std_msgs.msg
 from cv_bridge import CvBridge, CvBridgeError
 from apriltag import apriltag
 from scipy.spatial.transform import Rotation as R
+import json
 
 
 class apriltag_odom:
@@ -219,6 +221,21 @@ class apriltag_odom:
                                 "apriltag21")
         return camera_pose
 
+def pose_to_dict(pose):
+    d = {
+        "position": {
+            "x": pose.position.x,
+            "y": pose.position.y,
+            "z": pose.position.z
+        },
+        "orientation": {
+            "x": pose.orientation.x,
+            "y": pose.orientation.y,
+            "z": pose.orientation.z,
+            "w": pose.orientation.w
+        }
+    }
+    return d
 
 def main(args):
     rospy.init_node('apriltag_detector', anonymous=True)
@@ -235,13 +252,61 @@ def main(args):
     camera_info = np.array(camera_info.K, dtype=np.float32).reshape((3, 3))
     #	camera_info = None
     rospy.loginfo("Camera intrinsic matrix: %s" % str(camera_info))
-    april = apriltag_odom(10)
-    april.get_pose()
-    try:
-        rospy.spin()
-    except KeyboardInterrupt:
-        rospy.loginfo("Shutting Down")
-    cv2.destroyAllWindows()
+    running = True
+    old_command = ""
+    num_frames_str = ""
+    base_path = "/opt/robotics_sdk/"
+    print("AprilTag Pose Estimation")
+    while not num_frames_str.isdigit():
+        num_frames_str = input("Enter number of frames that should be taken to average per Pose Estimation: ")
+    num_frames = int(num_frames_str)
+    april = apriltag_odom(num_frames)
+    save_file_name = ""
+    while running and not rospy.is_shutdown():
+        print("AprilTag Pose Estimation Commands: 'getpose', 'savepose', 'exit'")
+        prompt_string = ""
+        if old_command != "":
+            prompt_string = "[" + old_command + "] > "
+        else:
+            prompt_string = "> "
+        command = input(prompt_string)
+        if command == "":
+            if old_command != "":
+                command = old_command
+            else:
+                continue
+        old_command = command
+        if command == "getpose":
+            april.get_pose()
+        elif command == "savepose":
+            while save_file_name == "" or save_file_name == base_path:
+                save_file_name = base_path + input("Enter name for Pose Save File: ")
+            pose_name = ""
+            while pose_name == "":
+                pose_name = input("Enter name for Saved Pose: ")
+            pose = april.get_pose()
+            data = dict()
+            try:
+                new_file = open(save_file_name, "x+")
+                print("File doesn't exist, creating...")
+                new_file.write("{}")
+                new_file.flush()
+                new_file.close()
+            except FileExistsError:
+                print("File exists, loading...")
+            with open(save_file_name, "r") as file:
+                data = json.load(file)
+                print("File loaded!")
+            with open(save_file_name, "w") as file:
+                data[pose_name] = pose_to_dict(pose)
+                json.dump(data, file)
+                print("File updated and saved! Path: " + save_file_name)
+        elif command == "exit":
+            running = False
+        else:
+            print("Invalid Command")
+
+
 
 
 if __name__ == '__main__':
