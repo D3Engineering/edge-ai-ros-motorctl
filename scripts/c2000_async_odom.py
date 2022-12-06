@@ -7,10 +7,10 @@ from can.notifier import MessageRecipient
 import math
 import numpy as np
 import rospy
+from d3_motorctl import apriltag_odom
 from geometry_msgs.msg import Quaternion, Transform, TransformStamped, PoseWithCovariance, TwistWithCovariance, Pose, Twist, Point, Vector3
 from nav_msgs.msg import Odometry
 from d3_motorctl.motor_ctl import bytes_to_velocity
-from d3_motorctl.srv import OdomAprilTag,OdomAprilTagResponse
 import tf
 
 # Define Constants
@@ -29,7 +29,6 @@ odom_broadcaster = tf.TransformBroadcaster()
 left_can_bus = can.Bus(channel='can0', interface='socketcan')
 right_can_bus = can.Bus(channel='can2', interface='socketcan')
 can_global_lmsg = None
-
 # Define other Variables
 last_proc_time = None
 total_x = 0.0
@@ -39,7 +38,6 @@ total_theta = 0.0
 def setup_listeners():
     global last_proc_time
     rospy.init_node('d3_odometry', anonymous=True)
-    s = rospy.Service('odom_april_tag', OdomAprilTag, apriltag_odometry_callback)
     last_proc_time = rospy.Time.now()
     left_listeners: List[MessageRecipient] = [
         left_motor_callback
@@ -51,12 +49,6 @@ def setup_listeners():
     left_notifier = can.Notifier(left_can_bus, left_listeners, loop=loop)
     right_notifier = can.Notifier(right_can_bus, right_listeners, loop=loop)
     return loop
-
-def apriltag_odometry_callback(req):
-    print("Apriltag Odometry callback initiated")
-    result = Pose(Point(total_x, total_y, 0.), Quaternion(*tf.transformations.quaternion_from_euler(0, 0, total_theta)))
-    print(result)
-    return result
 
 def left_motor_callback(lmsg: can.Message):
     global can_global_lmsg
@@ -95,15 +87,15 @@ def process_can_messages(lmsg, rmsg):
     global last_proc_time, wheel_base, total_x, total_y, total_theta
     current_time = rospy.Time.now()
     left_linear_velocity = -compute_wheel_linear_velocity(lmsg, "Left")
-    print("Resolved Left LinVel: " + str(left_linear_velocity))
+    #print("Resolved Left LinVel: " + str(left_linear_velocity))
     right_linear_velocity = compute_wheel_linear_velocity(rmsg, "Right")
-    print("Resolved Right LinVel: " + str(right_linear_velocity))
+    #print("Resolved Right LinVel: " + str(right_linear_velocity))
     time_elapsed_since_last_proc = current_time.to_sec() - last_proc_time.to_sec()
 
-    print("Time Elapsed: " + str(time_elapsed_since_last_proc))
+    #print("Time Elapsed: " + str(time_elapsed_since_last_proc))
     dx, dy, dt = compute_x_y_theta(left_linear_velocity, right_linear_velocity,
                                                       time_elapsed_since_last_proc)
-    print("Local [X: " + str(dx) + ", Y: " + str(dy) + ", Theta: " + str(dt) + "]")
+    #print("Local [X: " + str(dx) + ", Y: " + str(dy) + ", Theta: " + str(dt) + "]")
     if dx != float("Inf") and not math.isnan(dx) and dy != float("Inf") and not math.isnan(dy):
         H = np.linalg.norm((dx,dy))
         if dx < 0 and dy < 0:
@@ -115,7 +107,7 @@ def process_can_messages(lmsg, rmsg):
         total_theta -= 2 * math.pi
     elif total_theta < 0:
         total_theta += 2*math.pi
-    print("Total [X: " + str(total_x) + ", Y: " + str(total_y) + ", Theta: " + str(total_theta) + "]")
+    #print("Total [X: " + str(total_x) + ", Y: " + str(total_y) + ", Theta: " + str(total_theta) + "]")
     # odom_quat = tf.transformations.quaternion_from_euler(0, 0, dt)
     odom_tf_quat = tf.transformations.quaternion_from_euler(0, 0, total_theta)
     odom_broadcaster.sendTransform(
