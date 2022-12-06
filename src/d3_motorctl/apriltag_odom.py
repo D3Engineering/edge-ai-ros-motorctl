@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import math
 from json import JSONDecodeError
 from typing import Union
 
@@ -16,23 +17,33 @@ from cv_bridge import CvBridge, CvBridgeError
 from apriltag import apriltag
 from scipy.spatial.transform import Rotation as R
 import json
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
 
 class apriltag_odom:
-    def __init__(self, num_frames: int):
+    def __init__(self, num_frames: int, camera_info_topic_name: str, image_topic_name: str, camera_tf_name: str, tag_tf_name: str):
         self.bridge = CvBridge()
         # self.image_sub = rospy.Subscriber('/imx390/image_raw_rgb', Image, self.callback)
         # self.tag_pub = rospy.Publisher('/apriltag_detections', AprilTagDetectionArray, queue_size=10)
         # self.odom_pub = rospy.Publisher('odom', Odometry, queue_size=50)
         self.tfbr = tf.TransformBroadcaster()
         tfl = tf.TransformListener()
-        t1 = "map"
-        t2 = "apriltag21"
+        self.num_frames = num_frames
+        self.image_topic_name = image_topic_name
+        self.camera_info_topic_name = camera_info_topic_name
+        self.camera_tf_name = camera_tf_name
+        self.tag_tf_name = tag_tf_name
+        map_frame = "map"
         rospy.sleep(1)
         now = rospy.Time.now()
-        tfl.waitForTransform(t1, t2, now, rospy.Duration(4.0))
-        self.tag_height = tfl.lookupTransform(t1, t2, now)[0][2]
-        self.num_frames = num_frames
+        tfl.waitForTransform(map_frame, self.tag_tf_name, now, rospy.Duration(4.0))
+        self.tag_height = tfl.lookupTransform(map_frame, self.tag_tf_name, now)[0][2]
+        # Wait until we have valid calibration data before starting
+        rospy.loginfo("Waiting on camera_info: %s" % self.camera_info_topic_name)
+        camera_info_msg = rospy.wait_for_message(self.camera_info_topic_name, CameraInfo)
+        self.camera_info = np.array(camera_info_msg.K, dtype=np.float32).reshape((3, 3))
+        #	camera_info = None
+        rospy.loginfo("Camera intrinsic matrix: %s" % str(self.camera_info))
 
     def averageQuaternions(self, Q):
         # Number of quaternions to average
@@ -75,7 +86,6 @@ class apriltag_odom:
                     np.int32(corn_ref[1])) + ", RT: " + str(np.int32(corn_ref[2])) + ", LT: " + str(
                     np.int32(corn_ref[3])) + "\n"
 
-                global camera_info
                 tag_corners = np.array([corn_ref[0], corn_ref[1], corn_ref[3], corn_ref[2]], dtype=np.float32)
                 tag_shape = (2, 2)
                 tag_size = 0.3  # m
@@ -92,11 +102,11 @@ class apriltag_odom:
                 pnp_flag = cv2.SOLVEPNP_ITERATIVE
                 criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
                 _, rvecs, tvecs, inliers = cv2.solvePnPRansac( \
-                    objp, tag_corners, camera_info, None, iterationsCount=iterations, reprojectionError=reproj_error,
+                    objp, tag_corners, self.camera_info, None, iterationsCount=iterations, reprojectionError=reproj_error,
                     confidence=confidence, flags=pnp_flag)
 
                 refine_criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, sys.float_info.epsilon)
-                rvecs, tvecs = cv2.solvePnPRefineLM(objp, tag_corners, camera_info, None, rvecs, tvecs, refine_criteria)
+                rvecs, tvecs = cv2.solvePnPRefineLM(objp, tag_corners, self.camera_info, None, rvecs, tvecs, refine_criteria)
                 rospy.loginfo(tvecs)
 
                 # Create a AprilTagDetection message
@@ -162,7 +172,7 @@ class apriltag_odom:
         fails = 0
         while len(poses) < self.num_frames:
             print("Waiting on Frame " + str(len(poses) + 1) + "v" + str(fails) + "/" + str(self.num_frames))
-            image = rospy.wait_for_message("/imx390/image_raw_rgb", Image)
+            image = rospy.wait_for_message(self.image_topic_name, Image)
             result = self.get_instant_pose(image)
             if result is not None:
                 poses.append(result)
@@ -204,21 +214,21 @@ class apriltag_odom:
             z_sum += pose.position.z
             conversion_quaternions.append((pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z))
         plen = len(poses)
-        x_pose = float(x_sum / plen)
-        y_pose = float(y_sum / plen)
-        z_pose = self.tag_height
-        avg_point = Point(x_pose, y_pose, z_pose)
+        avg_point = Point(x_sum / plen, y_sum / plen, self.tag_height)
         avg_quat_wxyz = self.averageQuaternions(np.array(conversion_quaternions, dtype=float))
         avg_quat_xyzw = Quaternion(avg_quat_wxyz[1], avg_quat_wxyz[2], avg_quat_wxyz[3], avg_quat_wxyz[0])
-        print("X Final: " + str(x_pose))
-        print("Y Final: " + str(y_pose))
-        camera_pose = Pose(avg_point, avg_quat_xyzw)
-        self.tfbr.sendTransform((x_pose, y_pose, z_pose),
+        (roll, pitch, yaw) = euler_from_quaternion([avg_quat_xyzw.x, avg_quat_xyzw.y, avg_quat_xyzw.z, avg_quat_xyzw.w])
+        final_quat_arr = quaternion_from_euler(math.pi, 0, yaw)
+        final_quat = Quaternion(final_quat_arr[0], final_quat_arr[1], final_quat_arr[2], final_quat_arr[3])
+        print("X Final: " + str(avg_point.x))
+        print("Y Final: " + str(avg_point.y))
+        camera_pose = Pose(avg_point, final_quat)
+        self.tfbr.sendTransform((avg_point.x, avg_point.y, avg_point.z),
                                 # self.tfbr.sendTransform((res_tvecs[0], res_tvecs[1], 0),
-                                (avg_quat_xyzw.x, avg_quat_xyzw.y, avg_quat_xyzw.z, avg_quat_xyzw.w),
+                                (final_quat.x, final_quat.y, final_quat.z, final_quat.w),
                                 rospy.Time.now(),
-                                "imx390_rear_optical",
-                                "apriltag21")
+                                self.camera_tf_name,
+                                self.tag_tf_name)
         return camera_pose
 
 def pose_to_dict(pose):
@@ -239,19 +249,11 @@ def pose_to_dict(pose):
 
 def main(args):
     rospy.init_node('apriltag_detector', anonymous=True)
+    camera_image_topic = "/imx390/image_raw_rgb"
+    camera_info_topic = "/imx390/camera_info"
+    camera_tf_name = "imx390_rear_optical"
+    tag_tf_name = "apriltag21"
 
-    # Get camera name from parameter server
-    global camera_name
-    camera_name = rospy.get_param("~camera_name", "camera")
-    camera_info_topic = "/{}/camera_info".format(camera_name)
-    rospy.loginfo("Waiting on camera_info: %s" % camera_info_topic)
-
-    # Wait until we have valid calibration data before starting
-    global camera_info
-    camera_info = rospy.wait_for_message(camera_info_topic, CameraInfo)
-    camera_info = np.array(camera_info.K, dtype=np.float32).reshape((3, 3))
-    #	camera_info = None
-    rospy.loginfo("Camera intrinsic matrix: %s" % str(camera_info))
     running = True
     old_command = ""
     num_frames_str = ""
@@ -260,7 +262,7 @@ def main(args):
     while not num_frames_str.isdigit():
         num_frames_str = input("Enter number of frames that should be taken to average per Pose Estimation: ")
     num_frames = int(num_frames_str)
-    april = apriltag_odom(num_frames)
+    april = apriltag_odom(num_frames, camera_info_topic, camera_image_topic, camera_tf_name, tag_tf_name)
     save_file_name = ""
     while running and not rospy.is_shutdown():
         print("AprilTag Pose Estimation Commands: 'getpose', 'savepose', 'exit'")
