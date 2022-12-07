@@ -23,9 +23,6 @@ from tf.transformations import euler_from_quaternion, quaternion_from_euler
 class apriltag_odom:
     def __init__(self, num_frames: int, camera_info_topic_name: str, image_topic_name: str, camera_tf_name: str, tag_tf_name: str):
         self.bridge = CvBridge()
-        # self.image_sub = rospy.Subscriber('/imx390/image_raw_rgb', Image, self.callback)
-        # self.tag_pub = rospy.Publisher('/apriltag_detections', AprilTagDetectionArray, queue_size=10)
-        # self.odom_pub = rospy.Publisher('odom', Odometry, queue_size=50)
         self.tfbr = tf.TransformBroadcaster()
         tfl = tf.TransformListener()
         self.num_frames = num_frames
@@ -144,24 +141,8 @@ class apriltag_odom:
                 robot_pose = Pose(Point(float(res_tvecs[0]), float(res_tvecs[1]), float(res_tvecs[2])),
                                   Quaternion(float(robot_pose_quat[0]), float(robot_pose_quat[1]),
                                              float(robot_pose_quat[2]), float(robot_pose_quat[3])))
-
-                # Create an Odometry message for the robot
-                # odom = Odometry()
-                # odom.header.stamp = rospy.Time.now()
-                # odom.header.frame_id = "apriltag_"+str(d['id'])
-                # odom.pose.pose = tag_pose
-                # odom.pose.pose = robot_pose
-                # self.odom_pub.publish(odom)
                 rospy.loginfo(logline)
                 return robot_pose
-                # Broadcast Transform
-                # self.tfbr.sendTransform((res_tvecs[0], res_tvecs[1], res_tvecs[2]),
-                #                         # self.tfbr.sendTransform((res_tvecs[0], res_tvecs[1], 0),
-                #                         (
-                #                         robot_pose_quat[0], robot_pose_quat[1], robot_pose_quat[2], robot_pose_quat[3]),
-                #                         rospy.Time.now(),
-                #                         "imx390_rear_optical",
-                #                         "apriltag21")
             rospy.loginfo(logline)
             return None
         except CvBridgeError as e:
@@ -224,25 +205,24 @@ class apriltag_odom:
         print("Y Final: " + str(avg_point.y))
         camera_pose = Pose(avg_point, final_quat)
         self.tfbr.sendTransform((avg_point.x, avg_point.y, avg_point.z),
-                                # self.tfbr.sendTransform((res_tvecs[0], res_tvecs[1], 0),
                                 (final_quat.x, final_quat.y, final_quat.z, final_quat.w),
                                 rospy.Time.now(),
                                 self.camera_tf_name,
                                 self.tag_tf_name)
         return camera_pose
 
-def pose_to_dict(pose):
+def tf_to_dict(tf):
     d = {
         "position": {
-            "x": pose.position.x,
-            "y": pose.position.y,
-            "z": pose.position.z
+            "x": tf[0][0],
+            "y": tf[0][1],
+            "z": tf[0][2]
         },
         "orientation": {
-            "x": pose.orientation.x,
-            "y": pose.orientation.y,
-            "z": pose.orientation.z,
-            "w": pose.orientation.w
+            "x": tf[1][0],
+            "y": tf[1][1],
+            "z": tf[1][2],
+            "w": tf[1][3]
         }
     }
     return d
@@ -258,6 +238,7 @@ def main(args):
     old_command = ""
     num_frames_str = ""
     base_path = "/opt/robotics_sdk/"
+    tfl = tf.TransformListener()
     print("AprilTag Pose Estimation")
     while not num_frames_str.isdigit():
         num_frames_str = input("Enter number of frames that should be taken to average per Pose Estimation: ")
@@ -286,7 +267,9 @@ def main(args):
             pose_name = ""
             while pose_name == "":
                 pose_name = input("Enter name for Saved Pose: ")
-            pose = april.get_pose()
+            april.get_pose()
+            lct = tfl.getLatestCommonTime("map", "base_link")
+            robot_pose = tfl.lookupTransform("map", "base_link", lct)
             data = dict()
             try:
                 new_file = open(save_file_name, "x+")
@@ -300,7 +283,8 @@ def main(args):
                 data = json.load(file)
                 print("File loaded!")
             with open(save_file_name, "w") as file:
-                data[pose_name] = pose_to_dict(pose)
+                data[pose_name] = tf_to_dict(robot_pose)
+                print(data[pose_name])
                 json.dump(data, file)
                 print("File updated and saved! Path: " + save_file_name)
         elif command == "exit":
