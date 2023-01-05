@@ -7,9 +7,21 @@ import time
 import math
 from d3_motorctl.motor_ctl import velocity_to_bytes
 
+"""
+Motor Driver code for C2000s:
+Given an input cmd_vel drives the motors to run at the corresponding magnetic hz
+"""
+
 global estop
 
 def update_motor_speed(canbus, speed):
+    """
+    Formats and sends the motor drive message to a motor.
+
+    :param canbus: which can bus to send the message to (left or right motor)
+    :param speed: speed in magnetic hz to drive the motor
+    :return: None
+    """
     hexstr = "0x{:04x}".format(speed & 0xffff)[-4:]
     hexmsb = int("0x"+hexstr[0:2], 16)
     hexlsb = int("0x"+hexstr[2:], 16)
@@ -21,6 +33,15 @@ def update_motor_speed(canbus, speed):
 
 
 def callback(data):
+    """
+    Callback to run when new velocity commands are sent
+    Converts the velocity Twist (linear x and angular z velocities) into
+    magnetic hz, then sends the commands to the left & right motors.
+
+
+    :param data: velocity command issued to the robot
+    :return: None
+    """
     global last_left_speed
     global last_right_speed
     global estop
@@ -84,6 +105,10 @@ def callback(data):
 
 
 def listener():
+    """
+    ROS node - Sets up the can bus for communication to the motors.
+    Listens for /cmd_vel and then updates the motor speed for the left & right motor.
+    """
     global last_left_speed
     global last_right_speed
     global estop

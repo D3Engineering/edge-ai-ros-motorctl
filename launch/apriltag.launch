@@ -1,4 +1,5 @@
-<!-- XML -->
+<!--Deprecated and no longer used-->
+<!--turns on a camera for april tag detection + creates static transforms for localization-->
 <launch>
     <arg name="width" default="1280"/>
     <arg name="height" default="720"/>

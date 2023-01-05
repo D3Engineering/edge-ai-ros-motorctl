@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
+"""
+Helper file - issues a cmd_vel to drive at a
+fixed velocity for a specified duration, then stop.
 
+Useful for odometry testing / calibration
+"""
 import rospy
 from std_msgs.msg import String
 from geometry_msgs.msg import Twist

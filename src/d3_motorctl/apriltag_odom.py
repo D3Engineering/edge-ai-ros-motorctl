@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+"""
+Deprecated - used when we were reseting odometry to 0,0 via a service.
+Now exists in apriltag repository
+"""
+
 import math
 from json import JSONDecodeError
 from typing import Union

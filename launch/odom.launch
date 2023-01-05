@@ -1,3 +1,4 @@
+<!--Launches odometry node <requires motor.launch first>-->
 <launch>
     <node pkg="d3_motorctl" type="c2000_async_odom.py" name="d3_async_odom" ns="motorctl" output="screen"/>
 </launch>

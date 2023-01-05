@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+"""
+C2000 Odometry Node:
+Uses asynchronous CAN message receivers and updates odometry accordingly.
+"""
+
 import math
 import can
 import asyncio
@@ -36,6 +41,10 @@ total_y = 0.0
 total_theta = 0.0
 
 def setup_listeners():
+    """
+    Configures asynchronous CAN notifiers to issue callbacks for when
+    they get data from the motors
+    """
     global last_proc_time
     rospy.init_node('d3_odometry', anonymous=True)
     last_proc_time = rospy.Time.now()
@@ -51,12 +60,24 @@ def setup_listeners():
     return loop
 
 def left_motor_callback(lmsg: can.Message):
+    """
+    Callback for left motor.  Stores the left motor can message for later use
+    :param lmsg: input left can message
+    :return: None
+    """
     global can_global_lmsg
     if lmsg.is_rx:
         can_global_lmsg = lmsg
 
 
 def right_motor_callback(rmsg: can.Message):
+    """
+    Callback for right motor.  Processes both left & right message
+    (assumes you got the left message first because we send the left command first)
+
+    :param rmsg: input right can message
+    :return: None
+    """
     global can_global_lmsg
     if rmsg.is_rx and can_global_lmsg is not None:
         process_can_messages(can_global_lmsg, rmsg)
@@ -64,6 +85,12 @@ def right_motor_callback(rmsg: can.Message):
 
 
 def compute_wheel_linear_velocity(can_msg, wheel_name):
+    """
+    Converts incoming can message from a wheel into velocity
+    :param can_msg: Raw wheel speed (in magnetic hz)
+    :param wheel_name: Not used - name of the wheel
+    :return: velocity of the wheel (in m/s)
+    """
     global gear_ratio, wheel_radius
     speed_bytes = can_msg.data[4:6]
     speed_raw_int = int.from_bytes(speed_bytes, 'big')
@@ -74,6 +101,15 @@ def compute_wheel_linear_velocity(can_msg, wheel_name):
 
 
 def compute_x_y_theta(left_linear_velocity, right_linear_velocity, time_elapsed):
+    """
+    Computes differential x / y displacement since last command based on wheel speed & elapsed time.
+    We expect time elapsed to be equal to ~20hz, but this should help fix any variance.
+
+    :param left_linear_velocity: linear velocity of the left wheel (in m/s)
+    :param right_linear_velocity: linear velocity of the right wheel (in m/s)
+    :param time_elapsed: time elapsed in seconds
+    :return: change in X, Y, and Theta over the elapsed time
+    """
     theta = ((left_linear_velocity-right_linear_velocity)/wheel_base)*time_elapsed
     x = (((right_linear_velocity / 2) * math.cos(theta)) +
          ((left_linear_velocity / 2) * math.cos(theta))) * time_elapsed
@@ -84,6 +120,15 @@ def compute_x_y_theta(left_linear_velocity, right_linear_velocity, time_elapsed)
 
 # Processing of CAN Messages into Odometry Data
 def process_can_messages(lmsg, rmsg):
+    """
+    Processes the can messages from the left & right wheel.
+    Computes the cumulative x / y / theta movement
+    then updates the odom -> baselink transform accordingly.
+
+    :param lmsg: left-wheel can message
+    :param rmsg: right-wheel can message
+    :return: None
+    """
     global last_proc_time, wheel_base, total_x, total_y, total_theta
     current_time = rospy.Time.now()
     left_linear_velocity = -compute_wheel_linear_velocity(lmsg, "Left")
